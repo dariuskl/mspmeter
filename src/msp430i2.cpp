@@ -3,7 +3,6 @@
 #include "msp430i2.hpp"
 
 #include "future.hpp"
-#include "meter.hpp"
 #include "msp430.hpp"
 
 namespace msp430i2 {

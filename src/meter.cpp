@@ -14,14 +14,16 @@ namespace meter {
     constexpr auto menu_items_ = Array<std::string_view, 5>{
         {" . . . ", "1.OFF", "1.FUL", "2.OFF", "2.FUL"}};
 
-    /// \returns the calibrated voltage reading
-    constexpr auto apply(const int32_t raw_voltage_uV,
-                         const Channel_calibration &cal,
-                         const int16_t full_scale) {
-      return static_cast<int16_t>(
-          ((raw_voltage_uV - cal.offset_voltage_uV) / cal.full_scale_voltage_mV)
-          * full_scale);
+    /// \returns the scaled voltage reading in uV
+    constexpr int32_t apply(const int32_t conversion_result,
+                            const Channel_calibration &cal) {
+      return static_cast<int32_t>(
+          (int64_t{conversion_result - cal.offset} * cal.full_scale_voltage)
+          / cal.full_scale_reading);
     }
+    static_assert(apply(0x7f'ffff, {30'000'000, 0x7f'ffff, 0}) == 30'000'000);
+    static_assert(apply(0x6e'0000, {30'000'000, 0x6e'0000, 0}) == 30'000'000);
+    static_assert(apply(0x70'0000, {30'000'000, 0x6e'0000, 0}) > 30'000'000);
 
     auto converter = AD_converter{};
     auto serial = UART{};
@@ -64,7 +66,7 @@ namespace meter {
     set_bits(msp430i2::PAOUT, msp430i2::PA::P1_0 | msp430i2::PA::P2_3);
     set_bits(msp430i2::PAIES,
              msp430i2::PA::P2_0
-                 // set next edge depending on current pin state for enocder
+                 // set next edge depending on current pin state for encoder
                  | (load(msp430i2::PAIN)
                     & (msp430i2::PA::P2_1 | msp430i2::PA::P2_2)));
     set_bits(msp430i2::PAIE,
@@ -89,7 +91,7 @@ namespace meter {
     }
 
     for (auto i = 0; i < used_channels; ++i) {
-      raw_voltages_uV_[i] = converter.get_voltage_uV(i);
+      conversion_results_[i] = converter.get_conversion_result(i);
     }
 
     switch (std::exchange(command_, -1)) {
@@ -97,25 +99,29 @@ namespace meter {
       menu_active_ = false;
       break;
     case 1:
-      calibration_.channel[0].offset_voltage_uV = static_cast<int16_t>(
-          raw_voltages_uV_[0]);
+      calibration_.channel[0].offset = static_cast<int16_t>(
+          conversion_results_[0]);
       break;
     case 2:
+      calibration_.channel[0].full_scale_reading =
+          conversion_results_[0] - calibration_.channel[0].offset;
       break;
     case 3:
-      calibration_.channel[1].offset_voltage_uV = static_cast<int16_t>(
-          raw_voltages_uV_[1]);
+      calibration_.channel[1].offset = static_cast<int16_t>(
+          conversion_results_[1]);
       break;
+    case 4:
+      calibration_.channel[1].full_scale_reading =
+          conversion_results_[0] - calibration_.channel[0].offset;
     }
 
     for (auto i = 0; i < used_channels; ++i) {
-      calibrated_voltages_uV_[i] = raw_voltages_uV_[i]
-                                   - calibration_.channel[i].offset_voltage_uV;
+      voltages_uV_[i] = apply(conversion_results_[i], calibration_.channel[i]);
     }
 
 #if 0
-    const auto voltage_mV = apply(voltage_on_voltage_pin_uV, {}, 30);
-    const auto current_mA = apply(voltage_on_current_pin_uV, {}, 1);
+    const auto &voltage_mV = voltages_uV_[0];
+    const auto &current_mA = voltages_uV_[1];
     // TODO add support for switchable power display
     const auto power_mW = (voltage_mV * current_mA) / 1000;
 #endif
@@ -130,33 +136,29 @@ namespace meter {
         break;
       case 1:
       case 2:
-        format_readout<2, 2>(
-            lower_text_buffer_,
-            static_cast<int16_t>(calibrated_voltages_uV_[0] / 1000));
+        format_readout<2, 2>(lower_text_buffer_,
+                             static_cast<int16_t>(voltages_uV_[0] / 1000));
         break;
       case 3:
       case 4:
-        format_readout<1, 3>(
-            lower_text_buffer_,
-            static_cast<int16_t>(calibrated_voltages_uV_[1] / 1000));
+        format_readout<1, 3>(lower_text_buffer_,
+                             static_cast<int16_t>(voltages_uV_[1] / 1000));
         break;
       }
     } else {
-      format_readout<2, 2>(
-          upper_text_buffer_,
-          static_cast<int16_t>(calibrated_voltages_uV_[0] / 1000));
+      format_readout<2, 2>(upper_text_buffer_,
+                           static_cast<int16_t>(voltages_uV_[0] / 1000));
 
-      format_readout<1, 3>(
-          lower_text_buffer_,
-          static_cast<int16_t>(calibrated_voltages_uV_[1] / 1000));
+      format_readout<1, 3>(lower_text_buffer_,
+                           static_cast<int16_t>(voltages_uV_[1] / 1000));
     }
 
     readout_.set_readings(upper_text_buffer_, lower_text_buffer_);
 
     // FIXME send what is being displayed
     if (const auto num_chars = print(tx_buffer.begin(), tx_buffer.size(),
-                                     calibrated_voltages_uV_[0], "\t",
-                                     calibrated_voltages_uV_[1], "\r\n");
+                                     voltages_uV_[0], "\t", voltages_uV_[1],
+                                     "\r\n");
         num_chars > 0) {
       if (!serial.transmit(tx_buffer.begin(), num_chars)) {
         error(Error_code::SerialBusy);

@@ -67,12 +67,10 @@ namespace msp430i2 {
       ///    The first segment starts at 0xffff and each segment has a size of
       ///    1 KiB.
       void erase_segment(void* const ptr) {
-        using enum FCTL1;
-        using enum FCTL3;
-        store(fctl3, FWKEY3);
-        store(fctl1, FWKEY1 | ERASE);
+        store(fctl3, FCTL3::FWKEY3);
+        store(fctl1, FCTL1::FWKEY1 | FCTL1::ERASE);
         *static_cast<u16*>(ptr) = u16{0U};
-        store(fctl3, FWKEY3 | LOCK);
+        store(fctl3, FCTL3::FWKEY3 | FCTL3::LOCK);
       }
 
     private:

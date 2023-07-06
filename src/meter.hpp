@@ -21,19 +21,21 @@ namespace meter {
   constexpr auto encoder_a_pin = msp430i2::PA::P2_1;
   constexpr auto encoder_b_pin = msp430i2::PA::P2_2;
 
-  struct Config {
-      bool invert_digits{false};
-  };
-
   struct Channel_calibration {
-      static constexpr auto nominal_full_scale_voltage_mV = 928;
-      int16_t offset_voltage_uV{0};
-      int16_t full_scale_voltage_mV{nominal_full_scale_voltage_mV};
+      /// The voltage on the attenuator inputs corresponding to
+      /// `full_scale_reading`.
+      int32_t full_scale_voltage;
+      /// The conversion result for a full scale voltage applied at the inputs
+      /// of the attenuator network.
+      int32_t full_scale_reading{msp430i2::SD24::full_scale};
+      /// The conversion result when shorting the inputs of the attenuator
+      /// network.
+      int16_t offset{0};
   };
 
   struct Calibration_constants {
+      Array<Channel_calibration, used_channels> channel;
       int32_t reference_voltage_uV{msp430i2::SD24::reference_uV};
-      Array<Channel_calibration, used_channels> channel{};
   };
 
   class AD_converter {
@@ -54,13 +56,13 @@ namespace meter {
 
       static bool overflow() { return msp430i2::SD24::any_overflow(); }
 
-      constexpr int32_t get_ratio(const int channel) {
+      constexpr int32_t get_conversion_result(const int channel) {
         return averaged_[channel];
       }
 
-      int32_t get_voltage_uV(const int channel) {
+      static constexpr int32_t to_uV(const int32_t conversion_result) {
         return static_cast<int32_t>(
-            (int64_t{averaged_[channel]} * msp430i2::SD24::reference_uV)
+            (int64_t{conversion_result} * msp430i2::SD24::reference_uV)
             / msp430i2::SD24::full_scale);
       }
 
@@ -118,7 +120,7 @@ namespace meter {
 
   class UART {
     public:
-      /// Currently fixed for a baudrate of 9600 and using ACLK.
+      /// Currently fixed for a baud rate of 9600 and using ACLK.
       template <msp430i2::PA rx_pin, msp430i2::PA tx_pin>
       static void configure() {
         using namespace msp430i2;
@@ -206,10 +208,10 @@ namespace meter {
                      std::to_underlying(encoder_b_pin)>
           encoder_;
 
-      Calibration_constants calibration_{};
+      Calibration_constants calibration_{{{{30'000'000}, {1'000'000}}}};
 
-      Array<int32_t, used_channels> raw_voltages_uV_;
-      Array<int32_t, used_channels> calibrated_voltages_uV_;
+      Array<int32_t, used_channels> conversion_results_;
+      Array<int32_t, used_channels> voltages_uV_;
 
       bool menu_active_{false};
       int count_{0};
