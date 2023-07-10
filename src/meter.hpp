@@ -3,6 +3,8 @@
 #ifndef METER_HPP_
 #define METER_HPP_
 
+#include "adc.hpp"
+#include "config.hpp"
 #include "future.hpp"
 #include "msp430.hpp"
 #include "msp430i2.hpp"
@@ -11,15 +13,6 @@
 #include "util.hpp"
 
 namespace meter {
-
-  constexpr auto used_channels = 4;
-
-  /// The number of samples, which are accumulated in the background and
-  /// averaged to obtain one "reading" that is displayed to the user.
-  constexpr auto number_of_oversamples = 256;
-
-  constexpr auto encoder_a_pin = msp430i2::PA::P2_1;
-  constexpr auto encoder_b_pin = msp430i2::PA::P2_2;
 
   struct Channel_calibration {
       /// The voltage on the attenuator inputs corresponding to
@@ -30,7 +23,7 @@ namespace meter {
       int32_t full_scale_reading{msp430i2::SD24::full_scale};
       /// The conversion result when shorting the inputs of the attenuator
       /// network.
-      int16_t offset{0};
+      int32_t offset{0};
   };
 
   struct Calibration_constants {
@@ -38,64 +31,19 @@ namespace meter {
       int32_t reference_voltage_uV{msp430i2::SD24::reference_uV};
   };
 
-  class AD_converter {
-    public:
-      static void configure() {
-        using namespace msp430i2;
-
-        store(SD24CTL, SD24REFS);
-        store(SD24CCTL0, SD24LSBTOG | SD24DF | SD24IE | SD24GRP);
-        store(SD24CCTL1, SD24LSBTOG | SD24DF);
-      }
-
-      static void start_conversion() {
-        using namespace msp430i2;
-
-        set_bits(SD24CCTL1, SD24SC);
-      }
-
-      static bool overflow() { return msp430i2::SD24::any_overflow(); }
-
-      constexpr int32_t get_conversion_result(const int channel) {
-        return averaged_[channel];
-      }
-
-      static constexpr int32_t to_uV(const int32_t conversion_result) {
-        return static_cast<int32_t>(
-            (int64_t{conversion_result} * msp430i2::SD24::reference_uV)
-            / msp430i2::SD24::full_scale);
-      }
-
-      /// \return Whether the MCU should wake up.
-      bool on_conversion_done() {
-        a0_sum_ += msp430i2::SD24::get_conversion_result(0);
-        a1_sum_ += msp430i2::SD24::get_conversion_result(1);
-        ++number_of_conversion_results_;
-
-        if (number_of_conversion_results_ >= number_of_oversamples) {
-          averaged_[0] = a0_sum_ / number_of_conversion_results_;
-          averaged_[1] = a1_sum_ / number_of_conversion_results_;
-          a0_sum_ = 0;
-          a1_sum_ = 0;
-          number_of_conversion_results_ = 0;
-          return true;
-        }
-        return false;
-      }
-
-    private:
-      Array<int32_t, 2> averaged_{};
-
-      int32_t a0_sum_{};
-      int32_t a1_sum_{};
-      Size number_of_conversion_results_{};
+  enum class Command {
+    None_ = -1,
+    Back,
+    SetCh1Offset,
+    SetCh1FullScale,
+    SetCh2Offset,
+    SetCh2FullScale,
+    Flash,
+    Num_
   };
 
   class Command_parser {
     public:
-      static constexpr auto commands = Array<std::string_view, 2>{
-          {"READOUT.CONFIG", "CAL.CH1.OFFSET"}};
-
       bool add_character(const char c) {
         if (c == '\n') {
           return true;
@@ -106,116 +54,121 @@ namespace meter {
         return false;
       }
 
-      void evaluate() {
-        for (const auto &cmd : commands) {
-          if (cmd == state_.data()) {
-          }
-        }
-      }
+      void evaluate() {}
 
     private:
       Array<char, 32> state_{};
       int index_{0};
   };
 
-  class UART {
-    public:
-      /// Currently fixed for a baud rate of 9600 and using ACLK.
-      template <msp430i2::PA rx_pin, msp430i2::PA tx_pin>
-      static void configure() {
-        using namespace msp430i2;
-
-        UCA0::enable_reset();
-        const auto ctlw0 = b_or<u16>(UCSSEL::ACLK);
-        store(UCA0BRW, u16{3U});
-        store(UCA0MCTLW, u16{0x9200U});
-        set_bits(PASEL0, rx_pin | tx_pin);
-        store(UCA0CTLW0, ctlw0);
-        store(UCA0IE, UCTXIE);
-      }
-
-      bool transmit(const char *const data, const Size data_len) {
-        if ((data_len_ == 0) && (data_len > 0)) {
-          data_ = data + 1;
-          data_len_ = data_len;
-          msp430i2::UCA0::write_tx_buffer(static_cast<u8>(*data));
-          return true;
-        }
-        return false;
-      }
-
-      /// To be called from the corresponding interrupt service routine.
-      bool on_tx_buffer_empty() { return transmit_next(); }
-
-    private:
-      bool transmit_next() {
-        if (data_len_ > 1) {
-          const auto next_char = *data_;
-          data_ += 1;
-          data_len_ -= 1;
-          msp430i2::UCA0::write_tx_buffer(static_cast<u8>(next_char));
-          return true;
-        }
-        data_len_ = 0;
-        return false;
-      }
-
-      const char *volatile data_{nullptr};
-      volatile Size data_len_{0};
-  };
-
-  enum class Error_code {
+  enum class Meter_status {
     /// The calibration constants stored in the information memory flash segment
     /// during MCU production, were found to be invalid. This is a fatal error,
     /// because measurements won't be sufficiently accurate without the
     /// calibration constants.
-    InformationMemoryIntegrity,
+    InformationMemoryIntegrity = -4,
     /// An ADC conversion result was not collected before a new one was
     /// available. This should never happen, because it is a systematic error.
-    ConversionOverflow,
+    ConversionOverflow = -3,
     /// This is a systematic error, which is caused by having a too-low serial
     /// interface speed. New measurements are present before the old ones could
     /// be transmitted.
-    SerialBusy,
+    SerialBusy = -2,
     /// The conversion of the measured values to string failed due to the buffer
     /// being too small to hold the converted value.
-    StringConversionFailure,
+    StringConversionFailure = -1,
+    OK = 0,
+    StoreCalibration = 1
   };
 
   /// In debug builds, this will trap execution. In release builds, the system
   /// will be reset.
-  [[noreturn]] void error(Error_code code);
+  [[noreturn]] void error(Meter_status code);
 
   class Meter {
     public:
-      void init();
-      void step();
+      constexpr Meter(Array<char, 6> &upper_text_buffer,
+                      Array<char, 6> &lower_text_buffer)
+          : upper_text_buffer_{upper_text_buffer},
+            lower_text_buffer_{lower_text_buffer} {}
+
+      constexpr const auto &cal() const { return calibration_; }
+      void set_calibration(const Calibration_constants &cal) {
+        calibration_ = cal;
+      }
+
+      Meter_status step();
       void handle_command();
 
-      static bool eusci_a0_tx_buffer_empty_isr();
+      bool eusci_a0_tx_buffer_empty_isr();
       bool eusci_a0_rx_buffer_full_isr();
-      bool eusci_b0_tx_buffer_empty_isr();
-      static bool sd24_1_conversion_done_isr();
+      bool sd24_1_conversion_done_isr();
       bool on_s1_down();
 
       void update_encoder();
 
     private:
-      Command_parser parser_;
-      Readout readout_;
+      void format_voltage(Array<char, 6> &text_buffer);
+      void format_current();
+
+      Array<char, 6> &upper_text_buffer_;
+      Array<char, 6> &lower_text_buffer_;
+
+      Command_parser parser_{};
       Rotary_encoder<std::underlying_type_t<decltype(encoder_a_pin)>,
                      std::to_underlying(encoder_a_pin),
                      std::to_underlying(encoder_b_pin)>
-          encoder_;
+          encoder_{};
 
-      Calibration_constants calibration_{{{{30'000'000}, {1'000'000}}}};
+      Calibration_constants calibration_{};
 
-      Array<int32_t, used_channels> conversion_results_;
-      Array<int32_t, used_channels> voltages_uV_;
+      Array<int32_t, used_channels> conversion_results_{};
+      Array<int32_t, used_channels> voltages_uV_{};
 
       bool menu_active_{false};
       int count_{0};
-      int command_{-1};
+      Command command_{Command::None_};
+  };
+
+  class Normal_operation {
+    public:
+      Normal_operation(Array<char, 6> &upper_text_buffer,
+                       Array<char, 6> &lower_text_buffer, Meter &meter,
+                       Readout &readout)
+          : upper_text_buffer_{upper_text_buffer},
+            lower_text_buffer_{lower_text_buffer}, meter_{meter},
+            readout_{readout} {
+        // TODO choose a timeout that is slightly above the SD24 conversion time
+        //  of 250 µs * 256 samples averaged in software = 64 ms
+#if 0
+        msp430::Watchdog_timer::configure(
+            msp430::Watchdog_timer_clock_source::ACLK,
+            msp430::Watchdog_timer_interval::By8192);
+#endif
+        AD_converter::start_conversion();
+      }
+
+      ~Normal_operation() {
+        meter::AD_converter::stop_conversion();
+        msp430::Watchdog_timer::hold();
+      }
+
+      Meter_status operator()() {
+        const auto status = meter_.step();
+        if (status < Meter_status::OK) {
+          print(upper_text_buffer_, "Err");
+          format_readout<4, 0>(lower_text_buffer_, std::to_underlying(status));
+        }
+        readout_.update(upper_text_buffer_, lower_text_buffer_);
+        return status;
+      }
+
+    private:
+      Array<char, 6> &upper_text_buffer_;
+      Array<char, 6> &lower_text_buffer_;
+
+      Meter &meter_;
+      Readout &readout_;
   };
 
 } // namespace meter

@@ -1,11 +1,16 @@
 // Meter Firmware / Darius Kellermann <kellermann@protonmail.com>
 
 #include "meter.hpp"
+#include "msp/uart.hpp"
 #include "msp430i2.hpp"
 
 namespace {
 
-  auto meter_ = meter::Meter{};
+  auto upper_text_buffer_ = Array<char, 6>{"00.00"};
+  auto lower_text_buffer_ = Array<char, 6>{"0.000"};
+
+  auto meter_ = meter::Meter{upper_text_buffer_, lower_text_buffer_};
+  auto readout_ = meter::Readout{};
 
   [[gnu::interrupt]] void default_isr() {}
 
@@ -19,7 +24,7 @@ namespace {
       }
       break;
     case msp430i2::UCIVx::TxBufferEmpty:
-      if (meter::Meter::eusci_a0_tx_buffer_empty_isr()) {
+      if (meter_.eusci_a0_tx_buffer_empty_isr()) {
         msp430::stay_awake();
       }
       break;
@@ -31,9 +36,7 @@ namespace {
     default:
       break;
     case msp430i2::UCIVx::TxBufferEmpty:
-      if (meter_.eusci_b0_tx_buffer_empty_isr()) {
-        msp430::stay_awake();
-      }
+      readout_.on_tx_buffer_empty();
       break;
     }
   }
@@ -43,7 +46,7 @@ namespace {
     default:
       break;
     case msp430i2::SD24IVx::SD24_0:
-      if (meter::Meter::sd24_1_conversion_done_isr()) {
+      if (meter_.sd24_1_conversion_done_isr()) {
         msp430::stay_awake();
       }
       break;
@@ -60,12 +63,12 @@ namespace {
       }
       break;
     case msp430i2::PxIV::Px_1: {
-      toggle_bits(msp430i2::PAIES, msp430i2::PA::P2_1);
+      msp430i2::Digital_io::toggle_interrupt_edge(msp430i2::PA::P2_1);
       meter_.update_encoder();
       break;
     }
     case msp430i2::PxIV::Px_2: {
-      toggle_bits(msp430i2::PAIES, msp430i2::PA::P2_2);
+      msp430i2::Digital_io::toggle_interrupt_edge(msp430i2::PA::P2_2);
       meter_.update_encoder();
       break;
     }
@@ -83,18 +86,72 @@ namespace {
        eusci_b0_rxtx_isr, eusci_a0_rxtx_isr, default_isr, default_isr,
        default_isr,       default_isr,       default_isr, msp430i2::on_reset}};
 
+  [[gnu::section(".calibration_data")]] const auto cal =
+      meter::Calibration_constants{{{{30'000'000}, {1'000'000}}}};
+
 } // namespace
 
 int main() {
   msp430::Watchdog_timer::hold();
   if (!msp430i2::calibrate_peripherals()) {
-    error(meter::Error_code::InformationMemoryIntegrity);
+    error(meter::Meter_status::InformationMemoryIntegrity);
   }
 
-  meter_.init();
+  msp430i2::Digital_io::configure_as_input(
+      meter::ns1_pressed_pin | meter::encoder_a_pin | meter::encoder_b_pin);
+  msp430i2::Digital_io::set(meter::heartbeat_pin | msp430i2::PA::P2_3);
+  msp430i2::Digital_io::configure_interrupt(
+      meter::ns1_pressed_pin
+          // set next edge depending on current pin state for encoder
+          | (msp430i2::Digital_io::get()
+             & (meter::encoder_a_pin | meter::encoder_b_pin)),
+      meter::ns1_pressed_pin | meter::encoder_a_pin | meter::encoder_b_pin);
+
+  msp430::SPI<msp430i2::UCB0>::configure();
+  msp430::UART<msp430i2::UCA0>::configure();
+
+  msp430i2::Digital_io::select_function(meter::rx_pin          // UCA0RXD
+                                            | meter::tx_pin    // UCA0TXD
+                                            | meter::rclk_pin  // UCB0STE
+                                            | meter::srclk_pin // UCB0CLK
+                                            | meter::ser_pin,  // UCB0SIMO
+                                        u8{1U});
+
+  meter::AD_converter::init();
+
+  meter_.update_encoder();
+
+  msp430::enable_interrupts();
 
   while (true) {
-    msp430::go_to_sleep();
-    meter_.step();
+    meter_.set_calibration(cal);
+
+    auto status = meter::Meter_status::OK;
+
+    for (auto op =
+             meter::Normal_operation{upper_text_buffer_, lower_text_buffer_,
+                                     meter_, readout_};
+         status == meter::Meter_status::OK; status = op()) {
+      msp430i2::Digital_io::clear(meter::heartbeat_pin);
+      msp430::go_to_sleep();
+      msp430i2::Digital_io::set(meter::heartbeat_pin);
+    }
+
+    switch (status) {
+    case meter::Meter_status::InformationMemoryIntegrity:
+    case meter::Meter_status::ConversionOverflow:
+    case meter::Meter_status::SerialBusy:
+    case meter::Meter_status::StringConversionFailure:
+      meter::error(status);
+      break;
+    case meter::Meter_status::StoreCalibration: {
+      auto fmc = msp430i2::Flash_memory_controller{msp430i2::dco_frequency_Hz};
+      fmc.erase_segment(&cal);
+      fmc.write(cal, meter_.cal());
+      break;
+    }
+    case meter::Meter_status::OK:
+      break;
+    }
   }
 }

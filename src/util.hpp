@@ -103,6 +103,15 @@ namespace meter {
   }
 
   inline Size print(char *const buffer, Size const buffer_length,
+                    const int16_t value) {
+    const auto result = std::to_chars(buffer, buffer + buffer_length, value);
+    if (result.ec == std::errc{}) {
+      return result.ptr - buffer;
+    }
+    return 0;
+  }
+
+  inline Size print(char *const buffer, Size const buffer_length,
                     const int32_t value) {
     const auto result = std::to_chars(buffer, buffer + buffer_length, value);
     if (result.ec == std::errc{}) {

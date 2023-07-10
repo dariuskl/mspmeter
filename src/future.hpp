@@ -21,6 +21,16 @@ namespace std {
 } // namespace std
 #endif
 
+template <typename Target_type_, typename Source_type_>
+  requires(std::is_integral_v<Target_type_> && std::is_integral_v<Source_type_>
+           && (std::numeric_limits<Source_type_>::digits
+               > std::numeric_limits<Target_type_>::digits))
+Target_type_ saturate_cast(const Source_type_ val) {
+  return static_cast<Target_type_>(
+      std::clamp(val, Source_type_{std::numeric_limits<Target_type_>::min()},
+                 Source_type_{std::numeric_limits<Target_type_>::max()}));
+}
+
 enum class u8 : uint8_t {};
 
 inline constexpr u8 operator~(const u8 rhs) {

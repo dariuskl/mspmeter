@@ -1,6 +1,7 @@
 // Meter Firmware / Darius Kellermann <kellermann@protonmail.com>
 
 #include "meter.hpp"
+#include "msp/uart.hpp"
 
 #include <cstring>
 
@@ -11,8 +12,9 @@ namespace meter {
 
   namespace {
 
-    constexpr auto menu_items_ = Array<std::string_view, 5>{
-        {" . . . ", "1.OFF", "1.FUL", "2.OFF", "2.FUL"}};
+    constexpr auto menu_items_ =
+        Array<std::string_view, std::to_underlying(Command::Num_)>{
+            {"rEt", "1.OFF", "1.FUL", "2.OFF", "2.FUL", "FLSH"}};
 
     /// \returns the scaled voltage reading in uV
     constexpr int32_t apply(const int32_t conversion_result,
@@ -26,93 +28,61 @@ namespace meter {
     static_assert(apply(0x70'0000, {30'000'000, 0x6e'0000, 0}) > 30'000'000);
 
     auto converter = AD_converter{};
-    auto serial = UART{};
+    auto serial = msp430::UART<msp430i2::UCA0>{};
 
-    Array<char, 6> upper_text_buffer_{"00.00"};
-    Array<char, 6> lower_text_buffer_{"0.000"};
-
-    auto tx_buffer = Array<char, 64>{};
+    auto tx_buffer = Array<char, 80>{};
 
   } // namespace
 
-  [[noreturn]] void error([[maybe_unused]] const Error_code code) {
+  [[noreturn]] void error(const Meter_status code) {
     msp430::Watchdog_timer::hold();
     msp430::disable_interrupts();
-    clear_bits(msp430i2::PAOUT, msp430i2::PA::P1_0);
+    msp430i2::Digital_io::clear(heartbeat_pin);
     while (true) {
-      const auto numeric_code = std::to_underlying(code) + 1;
+      const auto numeric_code = -std::to_underlying(code);
       for (auto i = 0; i < numeric_code; ++i) {
-        set_bits(msp430i2::PAOUT, msp430i2::PA::P1_0);
+        msp430i2::Digital_io::set(heartbeat_pin);
         msp430i2::delay_for(250);
-        clear_bits(msp430i2::PAOUT, msp430i2::PA::P1_0);
+        msp430i2::Digital_io::clear(heartbeat_pin);
         msp430i2::delay_for(250);
       }
       msp430i2::delay_for(1'000);
     }
   }
 
-  void Meter::init() {
-    // TODO choose a timeout that is slightly above the SD24 conversion time of
-    //  250 µs * 256 samples averaged in software = 64 ms
-#if 0
-    msp430::Watchdog_timer::configure(msp430::Watchdog_timer_clock_source::ACLK,
-                                      msp430::Watchdog_timer_interval::By8192);
-#endif
-
-    constexpr auto inputs = msp430i2::PA::P2_0 | msp430i2::PA::P2_1
-                            | msp430i2::PA::P2_2;
-
-    store(msp430i2::PADIR, msp430i2::PA::All & (~inputs));
-    set_bits(msp430i2::PAOUT, msp430i2::PA::P1_0 | msp430i2::PA::P2_3);
-    set_bits(msp430i2::PAIES,
-             msp430i2::PA::P2_0
-                 // set next edge depending on current pin state for encoder
-                 | (load(msp430i2::PAIN)
-                    & (msp430i2::PA::P2_1 | msp430i2::PA::P2_2)));
-    set_bits(msp430i2::PAIE,
-             msp430i2::PA::P2_0 | msp430i2::PA::P2_1 | msp430i2::PA::P2_2);
-
-    update_encoder();
-
-    UART::configure<msp430i2::PA::P1_2, msp430i2::PA::P1_3>();
-    AD_converter::configure();
-    readout_.configure();
-
-    msp430::enable_interrupts();
-
-    AD_converter::start_conversion();
-  }
-
-  void Meter::step() {
-    set_bits(msp430i2::PAOUT, msp430i2::PA::P1_0);
-
+  Meter_status Meter::step() {
     if (AD_converter::overflow()) {
-      error(Error_code::ConversionOverflow);
+      return Meter_status::ConversionOverflow;
     }
 
     for (auto i = 0; i < used_channels; ++i) {
       conversion_results_[i] = converter.get_conversion_result(i);
     }
 
-    switch (std::exchange(command_, -1)) {
-    case 0:
+    switch (std::exchange(command_, Command::None_)) {
+    case Command::Back:
       menu_active_ = false;
       break;
-    case 1:
-      calibration_.channel[0].offset = static_cast<int16_t>(
-          conversion_results_[0]);
+    case Command::SetCh1Offset:
+      calibration_.channel[0].offset = conversion_results_[0];
       break;
-    case 2:
+    case Command::SetCh1FullScale:
       calibration_.channel[0].full_scale_reading =
           conversion_results_[0] - calibration_.channel[0].offset;
       break;
-    case 3:
-      calibration_.channel[1].offset = static_cast<int16_t>(
-          conversion_results_[1]);
+    case Command::SetCh2Offset:
+      calibration_.channel[1].offset = conversion_results_[1];
       break;
-    case 4:
+    case Command::SetCh2FullScale:
       calibration_.channel[1].full_scale_reading =
-          conversion_results_[0] - calibration_.channel[0].offset;
+          conversion_results_[1] - calibration_.channel[1].offset;
+      break;
+    case Command::Flash:
+      menu_active_ = false;
+      return Meter_status::StoreCalibration;
+    case Command::None_:
+    case Command::Num_:
+      break;
     }
 
     for (auto i = 0; i < used_channels; ++i) {
@@ -128,46 +98,45 @@ namespace meter {
 
     if (menu_active_) {
       std::strncpy(upper_text_buffer_.data(), menu_items_[count_ / 2].data(),
-                   upper_text_buffer_.size());
+                   static_cast<size_t>(upper_text_buffer_.size()));
 
-      switch (count_ / 2) {
-      case 0:
+      switch (static_cast<Command>(count_ / 2)) {
+      case Command::None_:
+      case Command::Num_:
+        break;
+      case Command::Back:
+      case Command::Flash:
         lower_text_buffer_.fill('\0');
         break;
-      case 1:
-      case 2:
-        format_readout<2, 2>(lower_text_buffer_,
-                             static_cast<int16_t>(voltages_uV_[0] / 1000));
+      case Command::SetCh1Offset:
+      case Command::SetCh1FullScale:
+        format_voltage(lower_text_buffer_);
         break;
-      case 3:
-      case 4:
-        format_readout<1, 3>(lower_text_buffer_,
-                             static_cast<int16_t>(voltages_uV_[1] / 1000));
+      case Command::SetCh2Offset:
+      case Command::SetCh2FullScale:
+        format_current();
         break;
       }
     } else {
-      format_readout<2, 2>(upper_text_buffer_,
-                           static_cast<int16_t>(voltages_uV_[0] / 1000));
-
-      format_readout<1, 3>(lower_text_buffer_,
-                           static_cast<int16_t>(voltages_uV_[1] / 1000));
+      format_voltage(upper_text_buffer_);
+      format_current();
     }
-
-    readout_.set_readings(upper_text_buffer_, lower_text_buffer_);
 
     // FIXME send what is being displayed
-    if (const auto num_chars = print(tx_buffer.begin(), tx_buffer.size(),
-                                     voltages_uV_[0], "\t", voltages_uV_[1],
-                                     "\r\n");
+    if (const auto num_chars = print(
+            tx_buffer, conversion_results_[0], " - ",
+            calibration_.channel[0].offset, " => ", voltages_uV_[0], "\t",
+            conversion_results_[1], " - ", calibration_.channel[1].offset,
+            " => ", voltages_uV_[1], "\r\n");
         num_chars > 0) {
       if (!serial.transmit(tx_buffer.begin(), num_chars)) {
-        error(Error_code::SerialBusy);
+        return Meter_status::SerialBusy;
       }
     } else {
-      error(Error_code::StringConversionFailure);
+      return Meter_status::StringConversionFailure;
     }
 
-    clear_bits(msp430i2::PAOUT, msp430i2::PA::P1_0);
+    return Meter_status::OK;
   }
 
   void Meter::handle_command() { parser_.evaluate(); }
@@ -182,18 +151,13 @@ namespace meter {
         static_cast<char>(msp430i2::UCA0::read_rx_buffer()));
   }
 
-  bool Meter::eusci_b0_tx_buffer_empty_isr() {
-    readout_.on_tx_buffer_empty();
-    return false;
-  }
-
   bool Meter::sd24_1_conversion_done_isr() {
     return converter.on_conversion_done();
   }
 
   bool Meter::on_s1_down() {
     if (menu_active_) {
-      command_ = count_ / 2;
+      command_ = Command{count_ / 2};
     } else {
       menu_active_ = true;
       count_ = 0;
@@ -205,8 +169,22 @@ namespace meter {
     count_ = std::clamp(
         count_
             - encoder_.on_edge(std::to_underlying(
-                load(msp430i2::PAIN) & (encoder_a_pin | encoder_b_pin))),
+                msp430i2::Digital_io::get() & (encoder_a_pin | encoder_b_pin))),
         0, (menu_items_.size() - 1) * 2);
+  }
+
+  void Meter::format_voltage(Array<char, 6> &text_buffer) {
+    if (const auto voltage_mV = voltages_uV_[0] / 1'000; voltage_mV < 10'000) {
+      format_readout<1, 3>(text_buffer, saturate_cast<int16_t>(voltage_mV));
+    } else {
+      format_readout<2, 2>(text_buffer,
+                           saturate_cast<int16_t>(voltage_mV / 10));
+    }
+  }
+
+  void Meter::format_current() {
+    format_readout<1, 3>(lower_text_buffer_,
+                         static_cast<int16_t>(voltages_uV_[1] / 1'000));
   }
 
 } // namespace meter

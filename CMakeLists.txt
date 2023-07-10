@@ -41,7 +41,9 @@ if (NOT (${CMAKE_SYSTEM_PROCESSOR} STREQUAL ${CMAKE_HOST_SYSTEM_PROCESSOR}))
             src/main.cpp
             src/meter.cpp src/meter.hpp
             src/msp430i2.cpp src/msp430i2.hpp src/msp430.hpp
-            src/msp/spi.hpp
+            src/msp/spi.hpp src/msp/uart.hpp
+            src/adc.hpp
+            src/config.hpp
             src/future.hpp
             src/readout.hpp
             src/rotary_encoder.hpp

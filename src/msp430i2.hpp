@@ -62,14 +62,34 @@ namespace msp430i2 {
 
   class Flash_memory_controller {
     public:
+      static constexpr auto ftg_operating_frequency_Hz = 366'000;
+
+      explicit Flash_memory_controller(const long mclk_frequency_Hz) {
+        store(fctl2, FCTL2::FWKEY2 | FCTL2::FSSELx_MCLK
+                         | static_cast<FCTL2>(mclk_frequency_Hz
+                                              / ftg_operating_frequency_Hz));
+      }
+
+      /// Erases the segment containing the data pointed to by `ptr`.
+      ///    Execution is blocked until the procedure has finished. Thus, it is
+      /// advisable to hold the watchdog before calling this function.
       /// \param [in] ptr A pointer to any address within flash memory. The
       ///    segment that contains the data pointed to, will be erased.
       ///    The first segment starts at 0xffff and each segment has a size of
       ///    1 KiB.
-      void erase_segment(void* const ptr) {
+      void erase_segment(const void *const ptr) {
         store(fctl3, FCTL3::FWKEY3);
         store(fctl1, FCTL1::FWKEY1 | FCTL1::ERASE);
-        *static_cast<u16*>(ptr) = u16{0U};
+        *const_cast<u16 *>(static_cast<const u16 *>(ptr)) = u16{0U};
+        store(fctl1, FCTL1::FWKEY1);
+        store(fctl3, FCTL3::FWKEY3 | FCTL3::LOCK);
+      }
+
+      template <typename Tp_> void write(const Tp_ &flash_obj, const Tp_ &obj) {
+        store(fctl3, FCTL3::FWKEY3);
+        store(fctl1, FCTL1::FWKEY1 | FCTL1::WRT);
+        const_cast<Tp_ &>(flash_obj) = obj;
+        store(fctl1, FCTL1::FWKEY1);
         store(fctl3, FCTL3::FWKEY3 | FCTL3::LOCK);
       }
 
@@ -116,13 +136,6 @@ namespace msp430i2 {
     return static_cast<PA>(std::to_underlying(lhs) ^ std::to_underlying(rhs));
   }
 
-  constexpr auto PAIN = Register<const PA>{0x10};
-  constexpr auto PAOUT = Register<PA>{0x12};
-  constexpr auto PADIR = Register<PA>{0x14};
-  constexpr auto PASEL0 = Register<PA>{0x1a};
-  constexpr auto PAIES = Register<PA>{0x28};
-  constexpr auto PAIE = Register<PA>{0x2a};
-
   enum class PxIV : uint16_t {
     Px_0 = 0x02U,
     Px_1 = 0x04U,
@@ -143,7 +156,54 @@ namespace msp430i2 {
 
   class Digital_io {
     public:
-      template <typename... Tp_> static void configure(Tp_... pin_configs) {}
+      static void configure_as_input(const PA pin_mask) {
+        clear_bits(PADIR, pin_mask);
+      }
+
+      static void configure_interrupt(const PA edge_select,
+                                      const PA interrupt_enable) {
+        set_bits(PAIES, edge_select);
+        set_bits(PAIE, interrupt_enable);
+      }
+
+      static void toggle_interrupt_edge(const PA pin_mask) {
+        toggle_bits(PAIES, pin_mask);
+      }
+
+      static void select_function(const PA pin_mask, const u8 function) {
+        switch (function) {
+        case u8{0U}:
+          clear_bits(PASEL0, pin_mask);
+          clear_bits(PASEL1, pin_mask);
+          break;
+        case u8{1U}:
+          set_bits(PASEL0, pin_mask);
+          clear_bits(PASEL1, pin_mask);
+          break;
+        case u8{2U}:
+          clear_bits(PASEL0, pin_mask);
+          set_bits(PASEL1, pin_mask);
+          break;
+        case u8{3U}:
+          set_bits(PASEL0, pin_mask);
+          set_bits(PASEL1, pin_mask);
+          break;
+        }
+      }
+
+      static void set(const PA pin_mask) { set_bits(PAOUT, pin_mask); }
+      static void clear(const PA pin_mask) { clear_bits(PAOUT, pin_mask); }
+
+      static auto get() { return load(PAIN); }
+
+    private:
+      static constexpr auto PAIN = Register<const PA>{0x10};
+      static constexpr auto PAOUT = Register<PA>{0x12};
+      static constexpr auto PADIR = Register<PA>{0x14};
+      static constexpr auto PASEL0 = Register<PA>{0x1a};
+      static constexpr auto PASEL1 = Register<PA>{0x1c};
+      static constexpr auto PAIES = Register<PA>{0x28};
+      static constexpr auto PAIE = Register<PA>{0x2a};
   };
 
   enum class CSCTL : uint8_t { DCOR = 0x01U, DCOBYP = 0x02U, DCOF = 0x80U };
@@ -201,11 +261,33 @@ namespace msp430i2 {
   enum class UCSTEM : uint16_t { MultiMaster, SlaveSelect = 0x0002U };
   constexpr auto UCBUSY = u16{1U};
 
+  template <intptr_t base_, intptr_t ir_base_> class Eusci {
+    public:
+      static auto interrupt_vector() { return load(iv_); }
+
+      static void enable_reset() { clear_bits(ctlw0_, UCSWRST); }
+
+    private:
+      static constexpr auto iv_ = Register<UCIVx>{ir_base_ + 4};
+      static constexpr auto ctlw0_ = Register<u16>{base_};
+  };
+
   class UCA0 {
     public:
       static auto interrupt_vector() { return load(UCA0IV); }
 
       static void enable_reset() { clear_bits(UCA0CTLW0, UCSWRST); }
+
+      static void set_control(const u16 ctlw0) { store(UCA0CTLW0, ctlw0); }
+      static void set_interrupts(const u16 ie) { store(UCA0IE, ie); }
+      static void set_baud_rate_control(const u16 UCBRx) {
+        store(UCA0BRW, UCBRx);
+      }
+      static void set_modulation_control(const u16 UCBRSx, const u16 UCBRFx,
+                                         const bool oversampling_mode) {
+        store(UCA0MCTLW, (UCBRSx << 8U) | (UCBRFx << 4U)
+                             | (oversampling_mode ? u16{1U} : u16{0U}));
+      }
 
       static auto read_rx_buffer() { return load(UCA0RXBUF); }
       static void write_tx_buffer(const u8 byte_to_transmit) {
@@ -273,6 +355,9 @@ namespace msp430i2 {
                 | (load(SD24CCTL2) & SD24OVIFG) | (load(SD24CCTL3) & SD24OVIFG))
                != u16{0U};
       }
+
+      static void start_conversion() { set_bits(SD24CCTL1, SD24SC); }
+      static void stop_conversion() { clear_bits(SD24CCTL1, SD24SC); }
 
       static constexpr auto full_scale = 0x7f'ffff;
       static constexpr auto reference_uV = int32_t{msp430i2::shared_ref_mV}
@@ -346,49 +431,6 @@ namespace msp430i2 {
 
   bool calibrate_peripherals();
   extern "C" [[noreturn]] void on_reset();
-
-  // TODO from here on unchecked!
-
-  enum class Timer_A_clock_source { TACLK, ACLK, SMCLK, INCLK };
-
-  template <intptr_t base_> class Timer_A_ {
-    public:
-      Timer_A_(Timer_A_clock_source clock_source, uint8_t clock_divider) {
-        store(tactl_,
-              (u16{static_cast<uint16_t>(clock_source)} << 8U)
-                  | (u16{static_cast<uint16_t>(clock_divider - 1)} << 6U));
-      }
-
-      u16 count() const { return load(tar_); }
-
-      void enable_interrupt() {
-        store(tacctl0_, load(tacctl0_) | u16{1U << 4U});
-      }
-
-      void stop() { store(tactl_, load(tactl_) & ~(u16{3U} << 4U)); }
-
-      void start_up(const u16 top) {
-        store(taccr0_, top);
-        store(tactl_, (load(tactl_) & ~(u16{3U} << 4U)) | (u16{1U} << 4U));
-      }
-
-      void start_continuous() {
-        store(tactl_, (load(tactl_) & ~(u16{3U} << 4U)) | (u16{2U} << 4U));
-      }
-
-      void start_up_down(const u16 top) {
-        store(taccr0_, top);
-        store(tactl_, (load(tactl_) & ~(u16{3U} << 4U)) | (u16{3U} << 4U));
-      }
-
-    private:
-      static constexpr auto tactl_ = Register<u16>{base_};
-      static constexpr auto tacctl0_ = Register<u16>{base_ + 0x2};
-      static constexpr auto tar_ = Register<const u16>{base_ + 0x10};
-      static constexpr auto taccr0_ = Register<u16>{base_ + 0x12};
-  };
-
-  using Timer0_A3 = Timer_A_<0x160>;
 
 } // namespace msp430i2
 

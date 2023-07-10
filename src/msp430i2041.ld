@@ -4,7 +4,8 @@ ENTRY(on_reset)
 MEMORY {
     ram (rw) : ORIGIN = 0x0200, LENGTH = 2048
     info (r) : ORIGIN = 0x1000, LENGTH = 1024
-    rom (rx) : ORIGIN = 0x8000, LENGTH = 32768-64
+    calrom (r) : ORIGIN = 0x8000, LENGTH = 1024
+    rom (rx) : ORIGIN = 0x8400, LENGTH = 32768-1024-64
     vectors : ORIGIN = 0xffc0, LENGTH = 64
 }
 
@@ -71,4 +72,9 @@ SECTIONS {
     *(.device_descriptor)
   } > info
 
+  .calibration_data :
+  {
+    . = ALIGN(2);
+    *(.calibration_data)
+  } > calrom
 }
