@@ -156,8 +156,8 @@ namespace msp430i2 {
 
   class Digital_io {
     public:
-      static void configure_as_input(const PA pin_mask) {
-        clear_bits(PADIR, pin_mask);
+      static void configure_as_output(const PA pin_mask) {
+        set_bits(PADIR, pin_mask);
       }
 
       static void configure_interrupt(const PA edge_select,

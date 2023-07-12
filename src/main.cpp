@@ -97,8 +97,8 @@ int main() {
     error(meter::Meter_status::InformationMemoryIntegrity);
   }
 
-  msp430i2::Digital_io::configure_as_input(
-      meter::ns1_pressed_pin | meter::encoder_a_pin | meter::encoder_b_pin);
+  msp430i2::Digital_io::configure_as_output(
+      meter::heartbeat_pin | meter::buzzer_pin | msp430i2::PA::P2_3);
   msp430i2::Digital_io::set(meter::heartbeat_pin | msp430i2::PA::P2_3);
   msp430i2::Digital_io::configure_interrupt(
       meter::ns1_pressed_pin
