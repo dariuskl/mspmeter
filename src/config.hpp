@@ -3,6 +3,7 @@
 #ifndef MSPMETER_CONFIG_HPP
 #define MSPMETER_CONFIG_HPP
 
+#include "calibration.hpp"
 #include "msp430i2.hpp"
 
 namespace meter {
@@ -12,6 +13,16 @@ namespace meter {
   /// The number of samples, which are accumulated in the background and
   /// averaged to obtain one "reading" that is displayed to the user.
   constexpr auto number_of_oversamples = 256;
+
+  constexpr auto default_calibration =
+      Array<Channel_calibration, used_channels>{
+          {{5'000'000, 30'000'000, msp430i2::SD24::full_scale, 0},
+           {1'000'000, 1'000'000, msp430i2::SD24::full_scale, 0},
+           {1'000'000, 1'000'000, msp430i2::SD24::full_scale, 0},
+           {5'000'000, 30'000'000, msp430i2::SD24::full_scale, 0}}};
+
+  constexpr auto voltage_channel = 0;
+  constexpr auto current_channel = 1;
 
   constexpr auto heartbeat_pin = msp430i2::PA::P1_0;
   constexpr auto rx_pin = msp430i2::PA::P1_2;

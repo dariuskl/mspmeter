@@ -34,6 +34,7 @@ namespace meter {
     case '4':
       return b | c | f | g;
     case '5':
+    case 'S':
       return a | c | d | f | g;
     case '6':
       return a | c | d | e | f | g;

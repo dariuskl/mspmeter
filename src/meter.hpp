@@ -14,18 +14,6 @@
 
 namespace meter {
 
-  struct Channel_calibration {
-      /// The voltage on the attenuator inputs corresponding to
-      /// `full_scale_reading`.
-      int32_t full_scale_voltage;
-      /// The conversion result for a full scale voltage applied at the inputs
-      /// of the attenuator network.
-      int32_t full_scale_reading{msp430i2::SD24::full_scale};
-      /// The conversion result when shorting the inputs of the attenuator
-      /// network.
-      int32_t offset{0};
-  };
-
   struct Calibration_constants {
       Array<Channel_calibration, used_channels> channel;
       int32_t reference_voltage_uV{msp430i2::SD24::reference_uV};
@@ -34,10 +22,10 @@ namespace meter {
   enum class Command {
     None_ = -1,
     Back,
-    SetCh1Offset,
-    SetCh1FullScale,
-    SetCh2Offset,
-    SetCh2FullScale,
+    SetVoltageOffset,
+    SetVoltageGain,
+    SetCurrentOffset,
+    SetCurrentGain,
     Flash,
     Num_
   };

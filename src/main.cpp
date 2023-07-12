@@ -87,7 +87,7 @@ namespace {
        default_isr,       default_isr,       default_isr, msp430i2::on_reset}};
 
   [[gnu::section(".calibration_data")]] const auto cal =
-      meter::Calibration_constants{{{{30'000'000}, {1'000'000}}}};
+      meter::Calibration_constants{meter::default_calibration};
 
 } // namespace
 
