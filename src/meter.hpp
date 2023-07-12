@@ -148,6 +148,9 @@ namespace meter {
           format_readout<4, 0>(lower_text_buffer_, std::to_underlying(status));
         }
         readout_.update(upper_text_buffer_, lower_text_buffer_);
+        while (!readout_.idle()) {
+        }
+        AD_converter::start_conversion();
         return status;
       }
 
