@@ -344,6 +344,8 @@ namespace msp430i2 {
   constexpr auto SD24CCTL3 = Register<u16>{0x108};
   constexpr auto SD24IV = Register<const SD24IVx>{0x1f0};
 
+  constexpr auto SD24CCTLx = Array<Register<u16>, 4>{
+      {{0x102}, {0x104}, {0x106}, {0x108}}};
   constexpr auto SD24MEMx = Array<Register<u16>, 4>{
       {{0x110}, {0x112}, {0x114}, {0x116}}};
 
@@ -356,8 +358,15 @@ namespace msp430i2 {
                != u16{0U};
       }
 
-      static void start_conversion() { set_bits(SD24CCTL1, SD24SC); }
-      static void stop_conversion() { clear_bits(SD24CCTL1, SD24SC); }
+      template <int channel>
+      static void start_conversion() {
+        set_bits(SD24CCTLx[channel], SD24SC);
+      }
+
+      template <int channel>
+      static void stop_conversion() {
+        clear_bits(SD24CCTLx[channel], SD24SC);
+      }
 
       static constexpr auto full_scale = 0x7f'ffff;
       static constexpr auto reference_uV = int32_t{msp430i2::shared_ref_mV}

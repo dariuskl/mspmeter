@@ -15,16 +15,18 @@ namespace meter {
 
         store(SD24CTL, SD24REFS);
         store(SD24CCTL0, SD24LSBTOG | SD24DF | SD24IE | SD24GRP);
-        store(SD24CCTL1, SD24LSBTOG | SD24DF);
+        store(SD24CCTL1, SD24LSBTOG | SD24DF | SD24GRP);
+        store(SD24CCTL2, SD24LSBTOG | SD24DF | SD24GRP);
+        store(SD24CCTL3, SD24LSBTOG | SD24DF);
       }
 
-      static void start_conversion() { msp430i2::SD24::start_conversion(); }
-      static void stop_conversion() { msp430i2::SD24::stop_conversion(); }
+      static void start_conversion() { msp430i2::SD24::start_conversion<3>(); }
+      static void stop_conversion() { msp430i2::SD24::stop_conversion<3>(); }
 
       static bool overflow() { return msp430i2::SD24::any_overflow(); }
 
       constexpr int32_t get_conversion_result(const int channel) {
-        return averaged_[channel];
+        return averages_[channel];
       }
 
       static constexpr int32_t to_uV(const int32_t conversion_result) {
@@ -33,17 +35,19 @@ namespace meter {
             / msp430i2::SD24::full_scale);
       }
 
-      /// \return Whether the MCU should wake up.
+      /// \return Whether a new averaged result is available.
       bool on_conversion_done() {
-        a0_sum_ += msp430i2::SD24::get_conversion_result(0);
-        a1_sum_ += msp430i2::SD24::get_conversion_result(1);
+        for (auto i = 0; i < used_channels; ++i) {
+          sums_[i] += msp430i2::SD24::get_conversion_result(i);
+        }
         ++number_of_conversion_results_;
 
         if (number_of_conversion_results_ >= number_of_oversamples) {
-          averaged_[0] = a0_sum_ / number_of_conversion_results_;
-          averaged_[1] = a1_sum_ / number_of_conversion_results_;
-          a0_sum_ = 0;
-          a1_sum_ = 0;
+          stop_conversion();
+          for (auto i = 0; i < used_channels; ++i) {
+            averages_[i] = sums_[i] / number_of_conversion_results_;
+          }
+          sums_ = {};
           number_of_conversion_results_ = 0;
           return true;
         }
@@ -51,10 +55,8 @@ namespace meter {
       }
 
     private:
-      Array<int32_t, 2> averaged_{};
-
-      int32_t a0_sum_{};
-      int32_t a1_sum_{};
+      Array<int32_t, used_channels> sums_{};
+      Array<int32_t, used_channels> averages_{};
       Size number_of_conversion_results_{};
   };
 
