@@ -36,18 +36,18 @@ namespace meter {
    * \param [in] number The number to be represented as a formatted string.
    * \return A buffer containing the resulting string.
    */
-  template <int integral_digits, int fractional_digits, Size array_size>
-    requires(array_size >= integral_digits + fractional_digits
+  template <int integral_digits, int fractional_digits, Size max_digits>
+    requires(max_digits >= integral_digits + fractional_digits
                                + (fractional_digits > 0 ? 1 : 0) /* DP */
                                + 1 /* NULL */)
-  void format_readout(Array<char, array_size> &buffer, const int number) {
+  void format_readout(Slice<char, max_digits> buffer, const int number) {
     const auto resolution = ipow10(fractional_digits);
     const auto magnitude = ipow10(integral_digits);
 
     const auto integral = std::abs(number / resolution);
     const auto fractional = std::abs(number) - (integral * resolution);
 
-    buffer = {};
+    std::fill_n(buffer.begin(), buffer.size(), '\0');
 
     if (number == 0) {
       for (auto i = 0; i < integral_digits - 1; ++i) {

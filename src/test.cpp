@@ -78,7 +78,7 @@ namespace meter {
     GIVEN("positive overload") {
       const auto number = 100'00;
       WHEN("formatting") {
-        format_readout<2, 2>(buffer, number);
+        format_readout<2, 2>(Slice{buffer}, number);
         THEN("OL shown") { REQUIRE(buffer.data() == "  .OL"sv); }
       }
     }
@@ -86,7 +86,7 @@ namespace meter {
     GIVEN("positive full-scale") {
       const auto number = 99'99;
       WHEN("formatting") {
-        format_readout<2, 2>(buffer, number);
+        format_readout<2, 2>(Slice{buffer}, number);
         THEN("one leading zero") { REQUIRE(buffer.data() == "99.99"sv); }
       }
     }
@@ -94,7 +94,7 @@ namespace meter {
     GIVEN("zero") {
       const auto number = 0;
       WHEN("formatting") {
-        format_readout<2, 2>(buffer, number);
+        format_readout<2, 2>(Slice{buffer}, number);
         THEN("one leading zero") { REQUIRE(buffer.data() == " 0.00"sv); }
       }
     }
@@ -102,7 +102,7 @@ namespace meter {
     GIVEN("a negative value < 10") {
       const auto number = -999;
       WHEN("formatting") {
-        format_readout<2, 2>(buffer, number);
+        format_readout<2, 2>(Slice{buffer}, number);
         THEN("minus sign is prepended") { REQUIRE(buffer.data() == "-9.99"sv); }
       }
     }
@@ -110,7 +110,7 @@ namespace meter {
     GIVEN("a negative value > 10") {
       const auto number = -1000;
       WHEN("formatting") {
-        format_readout<2, 2>(buffer, number);
+        format_readout<2, 2>(Slice{buffer}, number);
         THEN("minus sign is prepended") { REQUIRE(buffer.data() == "- .OL"sv); }
       }
     }
@@ -122,7 +122,7 @@ namespace meter {
     GIVEN("positive overload") {
       const auto number = 10'000;
       WHEN("formatting") {
-        format_readout<1, 3>(buffer, number);
+        format_readout<1, 3>(Slice{buffer}, number);
         THEN("OL shown") { REQUIRE(buffer.data() == " . OL"sv); }
       }
     }
@@ -130,7 +130,7 @@ namespace meter {
     GIVEN("positive full-scale") {
       const auto number = 9'999;
       WHEN("formatting") {
-        format_readout<1, 3>(buffer, number);
+        format_readout<1, 3>(Slice{buffer}, number);
         THEN("one leading zero") { REQUIRE(buffer.data() == "9.999"sv); }
       }
     }
@@ -138,7 +138,7 @@ namespace meter {
     GIVEN("zero") {
       const auto number = 0;
       WHEN("formatting") {
-        format_readout<1, 3>(buffer, number);
+        format_readout<1, 3>(Slice{buffer}, number);
         THEN("one leading zero") { REQUIRE(buffer.data() == "0.000"sv); }
       }
     }
@@ -146,7 +146,7 @@ namespace meter {
     GIVEN("a negative value < 1") {
       const auto number = -999;
       WHEN("formatting for x.xxx") {
-        format_readout<1, 3>(buffer, number);
+        format_readout<1, 3>(Slice{buffer}, number);
         THEN("minus sign is in place of leading zero") {
           REQUIRE(buffer.data() == "-.999"sv);
         }
@@ -156,7 +156,7 @@ namespace meter {
     GIVEN("a negative value > 1") {
       const auto number = -1000;
       WHEN("formatting") {
-        format_readout<1, 3>(buffer, number);
+        format_readout<1, 3>(Slice{buffer}, number);
         THEN("minus sign is prepended") { REQUIRE(buffer.data() == "-. OL"sv); }
       }
     }
@@ -168,7 +168,7 @@ namespace meter {
     GIVEN("zero") {
       const auto number = 0;
       WHEN("formatting") {
-        format_readout<4, 0>(buffer, number);
+        format_readout<4, 0>(Slice{buffer}, number);
         THEN("one leading zero") { REQUIRE(buffer.data() == "   0"sv); }
       }
     }
@@ -176,7 +176,7 @@ namespace meter {
     GIVEN("a negative value") {
       const auto number = -1;
       WHEN("formatting for xxxx") {
-        format_readout<4, 0>(buffer, number);
+        format_readout<4, 0>(Slice{buffer}, number);
         THEN("") {
           REQUIRE(buffer.data() == "-  1"sv);
         }
