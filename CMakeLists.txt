@@ -38,6 +38,7 @@ if (NOT (${CMAKE_SYSTEM_PROCESSOR} STREQUAL ${CMAKE_HOST_SYSTEM_PROCESSOR}))
                         -mmcu=${MMCU})
 
     target_sources(meter_firmware PRIVATE
+            src/util/7segment.cpp src/util/7segment.hpp
             src/main.cpp
             src/meter.cpp src/meter.hpp
             src/msp430i2.cpp src/msp430i2.hpp src/msp430.hpp
@@ -61,6 +62,9 @@ else () # building for host => unit tests
     add_executable(meter_unit_tests)
     target_compile_features(meter_unit_tests PRIVATE cxx_std_20)
     target_link_libraries(meter_unit_tests PRIVATE Catch2::Catch2WithMain)
-    target_sources(meter_unit_tests PRIVATE src/util.cpp src/test.cpp)
+    target_sources(meter_unit_tests PRIVATE
+            src/util/7segment_test.cpp src/util/7segment.cpp src/util/7segment.hpp
+            src/util.cpp
+            src/test.cpp)
 
 endif ()
