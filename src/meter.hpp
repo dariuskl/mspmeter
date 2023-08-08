@@ -17,15 +17,21 @@ namespace meter {
   struct Calibration_constants {
       Array<Channel_calibration, used_channels> channel;
       int32_t reference_voltage_uV{msp430i2::SD24::reference_uV};
+      int16_t voltage_channel_index{0};
+      int16_t current_channel_index{1};
   };
 
   enum class Command {
     None_ = -1,
     Back,
-    SetVoltageOffset,
-    SetVoltageGain,
-    SetCurrentOffset,
-    SetCurrentGain,
+    Ch1Offset,
+    Ch1Gain,
+    Ch2Offset,
+    Ch2Gain,
+    Ch3Offset,
+    Ch3Gain,
+    Ch4Offset,
+    Ch4Gain,
     Flash,
     Num_
   };
@@ -145,7 +151,8 @@ namespace meter {
         const auto status = meter_.step();
         if (status < Meter_status::OK) {
           print(upper_text_buffer_, "Err");
-          format_readout<4, 0>(lower_text_buffer_, std::to_underlying(status));
+          format_readout<4, 0>(Slice{lower_text_buffer_},
+                               std::to_underlying(status));
         }
         readout_.update(upper_text_buffer_, lower_text_buffer_);
         while (!readout_.idle()) {

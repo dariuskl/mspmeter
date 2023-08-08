@@ -77,18 +77,19 @@ namespace msp430i2 {
       ///    segment that contains the data pointed to, will be erased.
       ///    The first segment starts at 0xffff and each segment has a size of
       ///    1 KiB.
-      void erase_segment(const void *const ptr) {
+      void erase_segment(void *const ptr) {
         store(fctl3, FCTL3::FWKEY3);
         store(fctl1, FCTL1::FWKEY1 | FCTL1::ERASE);
-        *const_cast<u16 *>(static_cast<const u16 *>(ptr)) = u16{0U};
+        *const_cast<volatile u16 *>(static_cast<const u16 *>(ptr)) = u16{};
         store(fctl1, FCTL1::FWKEY1);
         store(fctl3, FCTL3::FWKEY3 | FCTL3::LOCK);
       }
 
-      template <typename Tp_> void write(const Tp_ &flash_obj, const Tp_ &obj) {
+      template <typename Tp_>
+      void write(Tp_ &flash_obj, const Tp_ &obj) {
         store(fctl3, FCTL3::FWKEY3);
         store(fctl1, FCTL1::FWKEY1 | FCTL1::WRT);
-        const_cast<Tp_ &>(flash_obj) = obj;
+        flash_obj = obj;
         store(fctl1, FCTL1::FWKEY1);
         store(fctl3, FCTL3::FWKEY3 | FCTL3::LOCK);
       }
@@ -358,17 +359,16 @@ namespace msp430i2 {
                != u16{0U};
       }
 
-      template <int channel>
-      static void start_conversion() {
+      template <int channel> static void start_conversion() {
         set_bits(SD24CCTLx[channel], SD24SC);
       }
 
-      template <int channel>
-      static void stop_conversion() {
+      template <int channel> static void stop_conversion() {
         clear_bits(SD24CCTLx[channel], SD24SC);
       }
 
       static constexpr auto full_scale = 0x7f'ffff;
+      static constexpr auto negative_full_scale = -full_scale - 1;
       static constexpr auto reference_uV = int32_t{msp430i2::shared_ref_mV}
                                            * 1'000;
 

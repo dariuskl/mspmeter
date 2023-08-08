@@ -18,11 +18,8 @@ namespace meter {
       Array<Channel_calibration, used_channels>{
           {{5'000'000, 30'000'000, msp430i2::SD24::full_scale, 0},
            {1'000'000, 1'000'000, msp430i2::SD24::full_scale, 0},
-           {1'000'000, 1'000'000, msp430i2::SD24::full_scale, 0},
-           {5'000'000, 30'000'000, msp430i2::SD24::full_scale, 0}}};
-
-  constexpr auto voltage_channel = 0;
-  constexpr auto current_channel = 1;
+           {5'000'000, 30'000'000, msp430i2::SD24::full_scale, 0},
+           {1'000'000, 1'000'000, msp430i2::SD24::full_scale, 0}}};
 
   constexpr auto heartbeat_pin = msp430i2::PA::P1_0;
   constexpr auto rx_pin = msp430i2::PA::P1_2;

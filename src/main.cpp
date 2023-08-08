@@ -86,8 +86,8 @@ namespace {
        eusci_b0_rxtx_isr, eusci_a0_rxtx_isr, default_isr, default_isr,
        default_isr,       default_isr,       default_isr, msp430i2::on_reset}};
 
-  [[gnu::section(".calibration_data")]] const auto cal =
-      meter::Calibration_constants{meter::default_calibration};
+  [[gnu::section(".calibration_data")]] auto cal = meter::Calibration_constants{
+      meter::default_calibration};
 
 } // namespace
 

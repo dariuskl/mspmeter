@@ -3,18 +3,12 @@
 #include "meter.hpp"
 #include "msp/uart.hpp"
 
-#include <cstring>
-
 namespace meter {
 
   constexpr auto max_channels = 4;
   static_assert(used_channels <= max_channels);
 
   namespace {
-
-    constexpr auto menu_items_ =
-        Array<std::string_view, std::to_underlying(Command::Num_)>{
-            {"rEt", "U 0.0", "U 5.0", "A 0.0", "A 1.0", "FLSH"}};
 
     /// \returns the scaled voltage reading in uV
     constexpr int32_t apply(const int32_t conversion_result,
@@ -66,27 +60,41 @@ namespace meter {
     case Command::Back:
       menu_active_ = false;
       break;
-    case Command::SetVoltageOffset:
-      calibration_.channel[voltage_channel].offset =
-          conversion_results_[voltage_channel];
+    case Command::Ch1Offset:
+      calibration_.channel[0].offset = conversion_results_[0];
       break;
-    case Command::SetVoltageGain:
-      calibration_.channel[voltage_channel].full_scale_reading =
-          (conversion_results_[voltage_channel]
-           - calibration_.channel[voltage_channel].offset)
-          * (calibration_.channel[voltage_channel].full_scale_voltage
-             / calibration_.channel[voltage_channel].calibration_voltage);
+    case Command::Ch1Gain:
+      calibration_.channel[0].full_scale_reading =
+          (conversion_results_[0] - calibration_.channel[0].offset)
+          * (calibration_.channel[0].full_scale_voltage
+             / calibration_.channel[0].calibration_voltage);
       break;
-    case Command::SetCurrentOffset:
-      calibration_.channel[current_channel].offset =
-          conversion_results_[current_channel];
+    case Command::Ch2Offset:
+      calibration_.channel[1].offset = conversion_results_[1];
       break;
-    case Command::SetCurrentGain:
-      calibration_.channel[current_channel].full_scale_reading =
-          (conversion_results_[current_channel]
-           - calibration_.channel[current_channel].offset)
-          * (calibration_.channel[current_channel].full_scale_voltage
-             / calibration_.channel[current_channel].calibration_voltage);
+    case Command::Ch2Gain:
+      calibration_.channel[1].full_scale_reading =
+          (conversion_results_[1] - calibration_.channel[1].offset)
+          * (calibration_.channel[1].full_scale_voltage
+             / calibration_.channel[1].calibration_voltage);
+      break;
+    case Command::Ch3Offset:
+      calibration_.channel[2].offset = conversion_results_[2];
+      break;
+    case Command::Ch3Gain:
+      calibration_.channel[2].full_scale_reading =
+          (conversion_results_[2] - calibration_.channel[2].offset)
+          * (calibration_.channel[2].full_scale_voltage
+             / calibration_.channel[2].calibration_voltage);
+      break;
+    case Command::Ch4Offset:
+      calibration_.channel[3].offset = conversion_results_[3];
+      break;
+    case Command::Ch4Gain:
+      calibration_.channel[3].full_scale_reading =
+          (conversion_results_[3] - calibration_.channel[3].offset)
+          * (calibration_.channel[3].full_scale_voltage
+             / calibration_.channel[3].calibration_voltage);
       break;
     case Command::Flash:
       menu_active_ = false;
@@ -101,24 +109,73 @@ namespace meter {
     }
 
     if (menu_active_) {
-      std::strncpy(upper_text_buffer_.data(), menu_items_[count_ / 2].data(),
-                   static_cast<size_t>(upper_text_buffer_.size()));
-
       switch (static_cast<Command>(count_ / 2)) {
       case Command::None_:
       case Command::Num_:
         break;
       case Command::Back:
-      case Command::Flash:
+        print(upper_text_buffer_, "rEt");
         lower_text_buffer_.fill('\0');
         break;
-      case Command::SetVoltageOffset:
-      case Command::SetVoltageGain:
-        format_voltage(lower_text_buffer_);
+      case Command::Ch1Offset:
+        print(upper_text_buffer_, "1 0.0");
+        format_readout<1, 3>(Slice{lower_text_buffer_},
+                             static_cast<int>(voltages_uV_[0] / 1'000));
         break;
-      case Command::SetCurrentOffset:
-      case Command::SetCurrentGain:
-        format_current();
+      case Command::Ch1Gain:
+        print(upper_text_buffer_, "1 ");
+        format_readout<1, 1>(
+            slice<2, 4>(upper_text_buffer_),
+            static_cast<int>(calibration_.channel[0].calibration_voltage
+                             / 100'000));
+        format_readout<1, 3>(Slice{lower_text_buffer_},
+                             static_cast<int>(voltages_uV_[0] / 1'000));
+        break;
+      case Command::Ch2Offset:
+        print(upper_text_buffer_, "2 0.0");
+        format_readout<1, 3>(Slice{lower_text_buffer_},
+                             static_cast<int>(voltages_uV_[1] / 1'000));
+        break;
+      case Command::Ch2Gain:
+        print(upper_text_buffer_, "2 ");
+        format_readout<1, 1>(
+            slice<2, 4>(upper_text_buffer_),
+            static_cast<int>(calibration_.channel[1].calibration_voltage
+                             / 100'000));
+        format_readout<1, 3>(Slice{lower_text_buffer_},
+                             static_cast<int>(voltages_uV_[1] / 1'000));
+        break;
+      case Command::Ch3Offset:
+        print(upper_text_buffer_, "3 0.0");
+        format_readout<1, 3>(Slice{lower_text_buffer_},
+                             static_cast<int>(voltages_uV_[2] / 1'000));
+        break;
+      case Command::Ch3Gain:
+        print(upper_text_buffer_, "3 ");
+        format_readout<1, 1>(
+            slice<2, 4>(upper_text_buffer_),
+            static_cast<int>(calibration_.channel[2].calibration_voltage
+                             / 100'000));
+        format_readout<1, 3>(Slice{lower_text_buffer_},
+                             static_cast<int>(voltages_uV_[2] / 1'000));
+        break;
+      case Command::Ch4Offset:
+        print(upper_text_buffer_, "4 0.0");
+        format_readout<1, 3>(Slice{lower_text_buffer_},
+                             static_cast<int>(voltages_uV_[3] / 1'000));
+        break;
+      case Command::Ch4Gain:
+        print(upper_text_buffer_, "4 ");
+        format_readout<1, 1>(
+            slice<2, 4>(upper_text_buffer_),
+            static_cast<int>(calibration_.channel[3].calibration_voltage
+                             / 100'000));
+        format_readout<1, 3>(Slice{lower_text_buffer_},
+                             static_cast<int>(voltages_uV_[3] / 1'000));
+        break;
+      case Command::Flash:
+        print(upper_text_buffer_, "FLSH");
+        lower_text_buffer_.fill('\0');
         break;
       }
     } else {
@@ -127,13 +184,9 @@ namespace meter {
     }
 
     // FIXME send what is being displayed
-    if (const auto num_chars = print(
-            tx_buffer, conversion_results_[voltage_channel], " - ",
-            calibration_.channel[voltage_channel].offset, " => ",
-            voltages_uV_[voltage_channel], "\t",
-            conversion_results_[current_channel], " - ",
-            calibration_.channel[current_channel].offset, " => ",
-            voltages_uV_[current_channel], "\r\n");
+    if (const auto num_chars = print(tx_buffer, voltages_uV_[0], "\t",
+                                     voltages_uV_[1], "\t", voltages_uV_[2],
+                                     "\t", voltages_uV_[3], "\r\n");
         num_chars > 0) {
       if (!serial.transmit(tx_buffer.begin(), num_chars)) {
         return Meter_status::SerialBusy;
@@ -176,23 +229,40 @@ namespace meter {
         count_
             - encoder_.on_edge(std::to_underlying(
                 msp430i2::Digital_io::get() & (encoder_a_pin | encoder_b_pin))),
-        0, (menu_items_.size() - 1) * 2);
+        0, (std::to_underlying(Command::Num_) - 1) * 2);
   }
 
   void Meter::format_voltage(Array<char, 6> &text_buffer) {
-    if (const auto voltage_mV = voltages_uV_[voltage_channel] / 1'000;
-        voltage_mV < 10'000) {
-      format_readout<1, 3>(text_buffer, saturate_cast<int16_t>(voltage_mV));
+    if (conversion_results_[calibration_.voltage_channel_index]
+        >= msp430i2::SD24::full_scale) {
+      print(text_buffer, "  OL");
+    } else if (conversion_results_[calibration_.voltage_channel_index]
+               <= msp430i2::SD24::negative_full_scale) {
+      print(text_buffer, "- OL");
+    } else if (const auto voltage_mV =
+                   voltages_uV_[calibration_.voltage_channel_index] / 1'000;
+               voltage_mV < 10'000) {
+      format_readout<1, 3>(Slice{text_buffer},
+                           saturate_cast<int16_t>(voltage_mV));
     } else {
-      format_readout<2, 2>(text_buffer,
+      format_readout<2, 2>(Slice{text_buffer},
                            saturate_cast<int16_t>(voltage_mV / 10));
     }
   }
 
   void Meter::format_current() {
-    format_readout<1, 3>(
-        lower_text_buffer_,
-        static_cast<int16_t>(voltages_uV_[current_channel] / 1'000));
+    if (conversion_results_[calibration_.current_channel_index]
+        >= msp430i2::SD24::full_scale) {
+      print(lower_text_buffer_, "  OL");
+    } else if (conversion_results_[calibration_.current_channel_index]
+               <= msp430i2::SD24::negative_full_scale) {
+      print(lower_text_buffer_, "- OL");
+    } else {
+      format_readout<1, 3>(
+          Slice{lower_text_buffer_},
+          static_cast<int16_t>(voltages_uV_[calibration_.current_channel_index]
+                               / 1'000));
+    }
   }
 
 } // namespace meter
