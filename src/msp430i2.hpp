@@ -1,9 +1,9 @@
-// Meter Firmware / Darius Kellermann <kellermann@protonmail.com>
+// Meter Firmware / Darius Kellermann <kellermann@proton.me>
 
 #ifndef MSP430I2_HPP_
 #define MSP430I2_HPP_
 
-#include "future.hpp"
+#include "util/safeint.hpp"
 
 namespace msp430i2 {
 
@@ -85,8 +85,7 @@ namespace msp430i2 {
         store(fctl3, FCTL3::FWKEY3 | FCTL3::LOCK);
       }
 
-      template <typename Tp_>
-      void write(Tp_ &flash_obj, const Tp_ &obj) {
+      template <typename Tp_> void write(Tp_ &flash_obj, const Tp_ &obj) {
         store(fctl3, FCTL3::FWKEY3);
         store(fctl1, FCTL1::FWKEY1 | FCTL1::WRT);
         flash_obj = obj;
@@ -245,12 +244,6 @@ namespace msp430i2 {
   constexpr auto UCA0IFG = Register<u16>{0x015c};
   constexpr auto UCA0IV = Register<UCIVx>{0x015e};
 
-  enum class UCCKPH : uint16_t {
-    ChangeFirst_CaptureSecond,
-    CaptureFirst_ChangeSecond = 0x8000U
-  };
-  enum class UCCKPL : uint16_t { InactiveLow, InactiveHigh = 0x4000U };
-  enum class UCMSB : uint16_t { LSBFirst, MSBFirst = 0x2000U };
   enum class UCMST : uint16_t { Slave, Master = 0x0800U };
   enum class UCMODE : uint16_t {
     SPI_3pin,
@@ -261,6 +254,27 @@ namespace msp430i2 {
   enum class UCSSEL : uint16_t { ACLK = 0x0040U, SMCLK = 0x0080U };
   enum class UCSTEM : uint16_t { MultiMaster, SlaveSelect = 0x0002U };
   constexpr auto UCBUSY = u16{1U};
+
+  // specific to SPI mode
+  enum class UCCKPH : uint16_t {
+    ChangeFirst_CaptureSecond,
+    CaptureFirst_ChangeSecond = 0x8000U
+  };
+  enum class UCCKPL : uint16_t { InactiveLow, InactiveHigh = 0x4000U };
+  enum class UCMSB : uint16_t { LSBFirst, MSBFirst = 0x2000U };
+  constexpr auto UCTR_mask = u16{0x0010U};
+  constexpr auto UCTXSTT_mask = u16{0x0002U};
+  constexpr auto UCTXSTP_mask = u16{0x0002U};
+
+  // specific to I²C mode
+  enum class UCA10 : uint16_t { OwnAddressIs7Bit, OwnAddressIs10Bit = 0x8000U };
+  enum class UCSLA10 : uint16_t {
+    SlaveAddressIs7Bit,
+    SlaveAddressIs10Bit = 0x4000U
+  };
+  enum class UCMM : uint16_t { SingleMaster, MultiMaster = 0x2000U };
+  constexpr auto UCSYNC = u16{1U} << 8U;
+  constexpr auto UCBBUSY = u16{0x0010U};
 
   template <intptr_t base_, intptr_t ir_base_> class Eusci {
     public:
@@ -301,6 +315,7 @@ namespace msp430i2 {
   constexpr auto UCB0STATW = Register<u16>{0x01c8};
   constexpr auto UCB0RXBUF = Register<u16>{0x01cc};
   constexpr auto UCB0TXBUF = Register<u16>{0x01ce};
+  constexpr auto UCB0I2CSA = Register<u16>{0x01e0};
   constexpr auto UCB0IE = Register<u16>{0x01ea};
   constexpr auto UCB0IFG = Register<u16>{0x01ec};
   constexpr auto UCB0IV = Register<UCIVx>{0x01ee};
@@ -315,8 +330,22 @@ namespace msp430i2 {
       static void set_control(const u16 ctlw0) { store(UCB0CTLW0, ctlw0); }
       static void set_interrupts(const u16 ie) { store(UCB0IE, ie); }
 
-      static void write_tx_buffer(const u8 byte_to_transmit) {
+      static void write_tx_buffer(const std::byte byte_to_transmit) {
         store(UCB0TXBUF, static_cast<u16>(byte_to_transmit));
+      }
+
+      static void start_i2c_transmission(const std::byte address) {
+        store(UCB0I2CSA, static_cast<u16>(address));
+        set_bits(UCB0CTLW0, UCTR_mask);
+        set_bits(UCB0CTLW0, UCTXSTT_mask);
+      }
+
+      static void generate_i2c_stop() {
+        set_bits(UCB0CTLW0, UCTXSTP_mask);
+      }
+
+      static bool is_i2c_bus_busy() {
+        return (load(UCB0STATW) & UCBBUSY) != u16{0U};
       }
   };
 
@@ -377,7 +406,7 @@ namespace msp430i2 {
       ///   The interrupt flag will be cleared by calling this method.
       static int32_t get_conversion_result(const int channel) {
         auto msb = static_cast<u32>(load(SD24MEMx[channel])) << 8U;
-        if ((msb &u32{0x0080'0000U}) != u32{0U}) {
+        if ((msb & u32{0x0080'0000U}) != u32{0U}) {
           msb = msb | u32{0xff00'0000U};
         }
         return static_cast<int32_t>(msb | load(SD24MEMx[channel]));

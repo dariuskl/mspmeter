@@ -1,12 +1,13 @@
-// Meter Firmware / Darius Kellermann <kellermann@protonmail.com>
+// Meter Firmware / Darius Kellermann <kellermann@proton.me>
 
-#ifndef MSPMETER_ROTARY_ENCODER_HPP
-#define MSPMETER_ROTARY_ENCODER_HPP
+#ifndef MSPMETER_DRIVERS_ROTARY_ENCODER_HPP
+#define MSPMETER_DRIVERS_ROTARY_ENCODER_HPP
 
 #include <utility>
 
 namespace meter {
 
+  /// Driver for incremental rotary encoders.
   template <typename State_type_, State_type_ a_mask, State_type_ b_mask>
   class Rotary_encoder {
     public:
@@ -57,4 +58,4 @@ namespace meter {
 
 } // namespace meter
 
-#endif // MSPMETER_ROTARY_ENCODER_HPP
+#endif // MSPMETER_DRIVERS_ROTARY_ENCODER_HPP

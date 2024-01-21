@@ -2,8 +2,8 @@
 
 #include "msp430i2.hpp"
 
-#include "future.hpp"
 #include "msp430.hpp"
+#include "util/safeint.hpp"
 
 namespace msp430i2 {
 

@@ -6,7 +6,7 @@
 #include "msp430.hpp"
 #include "msp430i2.hpp"
 
-#include <future.hpp>
+#include "util/safeint.hpp"
 
 namespace msp430 {
 

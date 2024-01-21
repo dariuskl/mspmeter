@@ -1,4 +1,4 @@
-// Meter Firmware / Darius Kellermann <kellermann@protonmail.com>
+// Meter Firmware / Darius Kellermann <kellermann@proton.me>
 
 #ifndef MSPMETER_ADC_HPP
 #define MSPMETER_ADC_HPP

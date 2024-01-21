@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "meterkit")(type "KiCad")(uri "/run/media/darius/Stuff/personal/meterkit/pcb/meterkit.kicad_sym")(options "")(descr ""))
+)

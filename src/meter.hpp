@@ -1,16 +1,16 @@
-// Meter Firmware / Darius Kellermann <kellermann@protonmail.com>
+// Meter Firmware / Darius Kellermann <kellermann@proton.me>
 
 #ifndef METER_HPP_
 #define METER_HPP_
 
 #include "adc.hpp"
 #include "config.hpp"
-#include "future.hpp"
+#include "display/readout.hpp"
+#include "drivers/rotary_encoder.hpp"
 #include "msp430.hpp"
 #include "msp430i2.hpp"
-#include "readout.hpp"
-#include "rotary_encoder.hpp"
 #include "util.hpp"
+#include "util/safeint.hpp"
 
 namespace meter {
 

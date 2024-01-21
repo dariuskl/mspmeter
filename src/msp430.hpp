@@ -1,4 +1,4 @@
-// Meter Firmware / Darius Kellermann <kellermann@protonmail.com>
+// Meter Firmware / Darius Kellermann <kellermann@proton.me>
 
 #ifndef MSP430_HPP_
 #define MSP430_HPP_

@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "meterkit")(type "KiCad")(uri "/run/media/darius/Stuff/personal/meterkit/pcb/meterkit.pretty")(options "")(descr ""))
+)
